@@ -18,7 +18,7 @@ permissions:
 jobs:
   test:
     name: Test/Cover
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
     - name: Checkout
@@ -47,7 +47,7 @@ jobs:
   publish-images:
     name: Build and publish images
     if: github.event_name != 'pull_request'
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: test
 
     steps:
@@ -71,19 +71,19 @@ jobs:
     - name: Installing ko
       run: go install github.com/google/ko@v0.11.2
 
-    # - name: Login to Docker Hub
-    #   if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
-    #   uses: docker/login-action@v2
-    #   with:
-    #     username: ${{ secrets.DOCKERHUB_USERNAME }}
-    #     password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-    - name: Login to GCR
+    - name: Login to Docker Hub
+      if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
       uses: docker/login-action@v2
       with:
-        registry: gcr.io
-        username: _json_key
-        password: ${{ secrets.GCLOUD_SERVICEACCOUNT_KEY }}
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    # - name: Login to GCR
+    #   uses: docker/login-action@v2
+    #   with:
+    #     registry: gcr.io
+    #     username: _json_key
+    #     password: ${{ secrets.GCLOUD_SERVICEACCOUNT_KEY }}
 
     - name: Set IMAGE_TAG
       id: image-tag
@@ -92,36 +92,36 @@ jobs:
         [[ ${GITHUB_REF_TYPE} == "tag" ]] && IMAGE_TAG=${GITHUB_REF_NAME}
         echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_OUTPUT
 
-    # - name: Publish container images to DockerHub
-    #   if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
-    #   env:
-    #     KO_DOCKER_REPO: docker.io/triggermesh
-    #     KOFLAGS: --jobs=4 --platform=linux/amd64,linux/arm64,linux/ppc64le --push=${{ github.event_name != 'pull_request' }}
-    #     DIST_DIR: ./releases/manifests
-    #   run: |
-    #     IMAGE_TAG=${{ steps.image-tag.outputs.IMAGE_TAG }} make release
-
-    - name: Publish container images to GCR
+    - name: Publish container images to DockerHub
+      if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
       env:
-        KO_DOCKER_REPO: gcr.io/triggermesh
+        KO_DOCKER_REPO: docker.io/arachidi
         KOFLAGS: --jobs=4 --platform=linux/amd64,linux/arm64,linux/ppc64le --push=${{ github.event_name != 'pull_request' }}
         DIST_DIR: ./releases/manifests
       run: |
-        pushd hack/manifest-cleaner
-        go install .
-        popd
-
         IMAGE_TAG=${{ steps.image-tag.outputs.IMAGE_TAG }} make release
 
-        declare -a release_files=(
-          triggermesh-core-crds.yaml
-          triggermesh-core.yaml
-        )
+    # - name: Publish container images to GCR
+    #   env:
+    #     KO_DOCKER_REPO: gcr.io/triggermesh
+    #     KOFLAGS: --jobs=4 --platform=linux/amd64,linux/arm64,linux/ppc64le --push=${{ github.event_name != 'pull_request' }}
+    #     DIST_DIR: ./releases/manifests
+    #   run: |
+    #     pushd hack/manifest-cleaner
+    #     go install .
+    #     popd
 
-        for f in "${release_files[@]}"; do
-          manifest-cleaner <"${DIST_DIR}/${f}" >"${DIST_DIR}/${f}.clean"
-          mv "${DIST_DIR}/${f}.clean" "${DIST_DIR}/${f}"
-        done
+    #     IMAGE_TAG=${{ steps.image-tag.outputs.IMAGE_TAG }} make release
+
+    #     declare -a release_files=(
+    #       triggermesh-core-crds.yaml
+    #       triggermesh-core.yaml
+    #     )
+
+    #     for f in "${release_files[@]}"; do
+    #       manifest-cleaner <"${DIST_DIR}/${f}" >"${DIST_DIR}/${f}.clean"
+    #       mv "${DIST_DIR}/${f}.clean" "${DIST_DIR}/${f}"
+    #     done
 
     - name: Upload artifact
       uses: actions/upload-artifact@master
@@ -133,7 +133,7 @@ jobs:
   release:
     name: Create Release
     if: github.event_name == 'push' && contains(github.ref, 'refs/tags/')
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
     needs: publish-images
     permissions:
       contents: write
